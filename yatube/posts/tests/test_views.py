@@ -4,12 +4,11 @@ import tempfile
 from django import forms
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import Follow, Group, Post
+from ..models import Comment, Follow, Group, Post
 
 User = get_user_model()
 
@@ -50,6 +49,11 @@ class PostViewsTests(TestCase):
             title='Другая тестовая группа',
             slug='test-slug-2',
             description='Тестовое описание'
+        )
+        cls.comment = Comment.objects.create(
+            post=cls.post,
+            author=cls.user,
+            text='Тестовый комментарий'
         )
 
     @classmethod
@@ -124,18 +128,15 @@ class PostViewsTests(TestCase):
         response = self.author_client.get(
             reverse('posts:post_detail', kwargs={'post_id': 1})
         )
-        self.assertEqual(
-            response.context.get('post').author.username,
-            PostViewsTests.user.username
-        )
-        self.assertEqual(
-            response.context.get('post').text,
-            PostViewsTests.post.text
-        )
-        self.assertEqual(
-            response.context.get('post').group.title,
-            PostViewsTests.group.title
-        )
+        post = response.context.get('post')
+        self.assertEqual(post.author.username, PostViewsTests.user.username)
+        self.assertEqual(post.text, PostViewsTests.post.text)
+        self.assertEqual(post.group.title, PostViewsTests.group.title)
+        form = response.context.get('form')
+        verbose_name = (form._meta.model._meta.get_field('text').verbose_name)
+        form_field = form.fields['text']
+        self.assertEqual(verbose_name, 'Комментарий')
+        self.assertIsInstance(form_field, forms.fields.CharField)
 
     def test_create_post_show_correct_context(self):
         """Шаблон create_post сформирован с правильным контекстом."""
@@ -208,62 +209,64 @@ class PostViewsTests(TestCase):
         pages_names = [
             reverse('posts:index'),
             reverse('posts:group_list', kwargs={'slug': 'test-slug'}),
-            reverse('posts:profile', kwargs={'username': 'auth'}),
-            reverse('posts:post_detail', kwargs={'post_id': 1})
+            reverse('posts:profile', kwargs={'username': 'auth'})
         ]
         for name in pages_names:
             with self.subTest(name=name):
                 response = self.author_client.get(name)
-                if name == reverse('posts:post_detail', kwargs={'post_id': 1}):
-                    page_object = response.context.get('post')
-                else:
-                    page_object = response.context['page_obj'][0]
+                page_object = response.context['page_obj'][0]
                 self.assertEqual(page_object.image, self.post.image)
+
+    def test_post_detail_with_image_shows_correct_context(self):
+        """При выводе поста с картинкой на подробной странице поста
+        изображение передаётся в словаре context.
+        """
+        response = self.author_client.get(
+            reverse('posts:post_detail', kwargs={'post_id': 1})
+        )
+        page_object = response.context.get('post')
+        self.assertEqual(page_object.image, self.post.image)
 
     def test_comment_show_on_post_page(self):
         """Комментарий появляется на странице поста."""
-        form_data = {'text': 'Тестовый комментарий'}
-        self.author_client.post(
-            reverse('posts:add_comment', kwargs={'post_id': self.post.pk}),
-            data=form_data,
-            follow=True
-        )
         response = self.author_client.get(
             reverse('posts:post_detail', kwargs={'post_id': self.post.pk})
         )
-        comment_on_page = (
-            response.context.get('comments').filter(text=form_data['text'])
-        )
-        self.assertTrue(comment_on_page)
+        comment = response.context['comments'][0]
+        self.assertEqual(comment, PostViewsTests.comment)
 
     def test_posts_on_index_page_save_in_cache(self):
         """Список записей страницы index хранится в кэше"""
         response = self.author_client.get(reverse('posts:index'))
         content = response.content.decode()
         self.post.delete()
-        cache.clear()
         another_response = self.author_client.get(reverse('posts:index'))
         another_content = another_response.content.decode()
-        self.assertIn(self.post.text, content)
-        self.assertNotIn(self.post.text, another_content)
+        self.assertEqual(content, another_content)
 
-    def test_profile_follow_and_profile_unfollow(self):
+    def test_profile_follow(self):
         """Авторизованный пользователь может подписываться
-        на других пользователей и удалять их из подписок.
+        на других пользователей.
         """
-        follow_count = Follow.objects.count()
         self.authorized_client.get(reverse(
             'posts:profile_follow',
             kwargs={'username': PostViewsTests.user.username})
         )
-        add_follow_count = Follow.objects.count()
+        self.assertTrue(
+            Follow.objects.filter(
+                user=self.user,
+                author=PostViewsTests.user
+            ).exists()
+        )
+
+    def test_profile_unfollow(self):
+        """Авторизованный пользователь может удалять авторов из подписок."""
+        Follow.objects.create(user=self.user, author=PostViewsTests.user)
         self.authorized_client.get(reverse(
             'posts:profile_unfollow',
             kwargs={'username': PostViewsTests.user.username})
         )
-        delete_follow_count = Follow.objects.count()
-        self.assertEqual(add_follow_count, follow_count + 1)
-        self.assertEqual(delete_follow_count, follow_count)
+        self.assertEqual(Follow.objects.count(), 0)
 
     def test_post_shows_on_follower_page_and_not_on_unfollower_page(self):
         """Новая запись пользователя появляется в ленте тех,

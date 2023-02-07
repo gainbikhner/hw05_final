@@ -7,7 +7,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import Group, Post
+from ..models import Group, Post, Word
 
 User = get_user_model()
 
@@ -30,6 +30,7 @@ class PostFormTests(TestCase):
             group=cls.group,
             author=cls.user
         )
+        cls.word = Word.objects.create(word='Волдеморт')
 
     @classmethod
     def tearDownClass(cls):
@@ -241,7 +242,11 @@ class PostFormTests(TestCase):
         )
         self.assertEqual(self.post.comments.count(), comments_count + 1)
         self.assertTrue(
-            self.post.comments.filter(text=form_data['text']).exists()
+            self.post.comments.filter(
+                text=form_data['text'],
+                post=self.post,
+                author=self.user
+            ).exists()
         )
 
     def test_add_comment_for_guest_client(self):
@@ -256,3 +261,24 @@ class PostFormTests(TestCase):
         redirect_link = '/auth/login/?next=/posts/1/comment/'
         self.assertRedirects(response, redirect_link)
         self.assertEqual(self.post.comments.count(), comments_count)
+
+    # Не понимаю как сделать проверку на запретные слова.
+    # Пишет, что нет то формы, то поля.
+    # Вставлял респонс с пост ид – подставляется форма с логином и паролем.
+    # Как-то теряюсь)
+    # Есть материалы по этой теме или может намек в какую сторону копать?
+
+    # def test_validation_form_add_comment(self):
+    #     """Комментарий не опубликуется с запретным словом"""
+    #     form_data = {'text': 'Волдеморт'}
+    #     response = self.guest_client.post(
+    #         reverse('posts:add_comment', kwargs={'post_id': self.post.pk}),
+    #         data=form_data,
+    #         follow=True
+    #     )
+    #     self.assertFormError(
+    #         response,
+    #         'form',
+    #         'text',
+    #         f'Вы использовали запретное слово «{self.word.word}»!'
+    #     )

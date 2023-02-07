@@ -108,6 +108,28 @@ class Follow(models.Model):
         ordering = ('user',)
         verbose_name = 'Подписка'
         verbose_name_plural = 'Подписки'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'author'],
+                name='unique_follow'
+            ),
+            models.CheckConstraint(
+                check=~models.Q(user=models.F('author')),
+                name='check_follow'
+            )
+        ]
 
     def __str__(self) -> str:
         return f'{self.user.username} follows {self.author.username}'
+
+
+class Word(models.Model):
+    word = models.CharField('Запретное слово', max_length=200)
+
+    class Meta:
+        ordering = ('word',)
+        verbose_name = 'Запретное слово'
+        verbose_name_plural = 'Запретные слова'
+
+    def __str__(self) -> str:
+        return self.word

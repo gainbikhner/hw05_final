@@ -51,26 +51,24 @@ class PostURLTests(TestCase):
         response = self.author_client.get('/posts/1/edit/')
         self.assertEqual(response.status_code, HTTPStatus.OK)
 
+    def test_follow_index_url_exists_at_desired_location(self):
+        """Страница /follow/ доступна авторизованному пользователю."""
+        response = self.authorized_client.get('/follow/')
+        self.assertEqual(response.status_code, HTTPStatus.OK)
+
     def test_unexisting_page_url_exists_at_404(self):
         """Запрос к /unexisting_page/ вернёт ошибку 404."""
         response = self.guest_client.get('/unexisting_page/')
         self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
 
-    def test_post_create_url_redirect_anonymous_on_admin_login(self):
-        """Страница /create/ перенаправит анонимного пользователя
-        на страницу логина.
-        """
-        response = self.guest_client.get('/create/', follow=True)
-        redirect_link = '/auth/login/?next=/create/'
-        self.assertRedirects(response, redirect_link)
-
-    def test_post_edit_url_redirect_anonymous_on_post_detail(self):
-        """Страница /posts/1/edit/ перенаправит анонимного пользователя
-        на страницу логина.
-        """
-        response = self.guest_client.get('/posts/1/edit/', follow=True)
-        redirect_link = '/auth/login/?next=/posts/1/edit/'
-        self.assertRedirects(response, redirect_link)
+    def test_urls_redirect_anonymous_on_admin_login(self):
+        """Страницы перенаправят анонимного пользователя на страницу логина."""
+        urls_for_anonymous = ['/create/', '/posts/1/edit/', '/follow/']
+        for url in urls_for_anonymous:
+            with self.subTest(url=url):
+                response = self.guest_client.get(url, follow=True)
+                redirect_link = f'/auth/login/?next={url}'
+                self.assertRedirects(response, redirect_link)
 
     def test_post_edit_url_redirect_no_author_on_post_detail(self):
         """Страница /posts/1/edit/ перенаправит неавтора на страницу поста."""
@@ -86,7 +84,8 @@ class PostURLTests(TestCase):
             '/profile/TestUser/': 'posts/profile.html',
             '/posts/1/': 'posts/post_detail.html',
             '/posts/1/edit/': 'posts/create_post.html',
-            '/create/': 'posts/create_post.html'
+            '/create/': 'posts/create_post.html',
+            '/follow/': 'posts/follow.html'
         }
         for url, template in templates_url_names.items():
             with self.subTest(url=url):

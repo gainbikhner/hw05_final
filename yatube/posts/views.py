@@ -19,16 +19,17 @@ def get_paginator(request, objects):
 
 def index(request):
     template = 'posts/index.html'
-    post_list = Post.objects.all()
+    post_list = Post.objects.select_related('author', 'group').all()
     page_obj = get_paginator(request, post_list)
-    context = {'page_obj': page_obj}
+    index = True
+    context = {'page_obj': page_obj, 'index': index}
     return render(request, template, context)
 
 
 def group_posts(request, slug):
     template = 'posts/group_list.html'
     group = get_object_or_404(Group, slug=slug)
-    post_list = group.posts.all()
+    post_list = group.posts.select_related('author').all()
     page_obj = get_paginator(request, post_list)
     context = {
         'group': group,
@@ -40,14 +41,12 @@ def group_posts(request, slug):
 def profile(request, username):
     template = 'posts/profile.html'
     author = get_object_or_404(User, username=username)
-    post_list = author.posts.all()
+    post_list = author.posts.select_related('author', 'group').all()
     page_obj = get_paginator(request, post_list)
-    following = False
-    if request.user.is_authenticated:
-        following = Follow.objects.filter(
-            user=request.user,
-            author=User.objects.get(username=username)
-        )
+    following = request.user.is_authenticated and Follow.objects.filter(
+        user=request.user,
+        author=author
+    ).exists()
     context = {
         'author': author,
         'page_obj': page_obj,
@@ -60,7 +59,7 @@ def post_detail(request, post_id):
     template = 'posts/post_detail.html'
     post = get_object_or_404(Post, id=post_id)
     form = CommentForm()
-    comments = post.comments.all()
+    comments = post.comments.select_related('author').all()
     context = {
         'post': post,
         'form': form,
@@ -71,14 +70,14 @@ def post_detail(request, post_id):
 
 @login_required
 def post_create(request):
-    template = 'posts/create_post.html'
     form = PostForm(request.POST or None, files=request.FILES or None)
-    context = {'form': form}
     if form.is_valid():
         post = form.save(commit=False)
         post.author = request.user
         post.save()
         return redirect('posts:profile', username=request.user)
+    template = 'posts/create_post.html'
+    context = {'form': form}
     return render(request, template, context)
 
 
@@ -121,29 +120,40 @@ def add_comment(request, post_id):
         comment.author = request.user
         comment.post = post
         comment.save()
-    return redirect('posts:post_detail', post_id=post_id)
+        return redirect('posts:post_detail', post_id=post_id)
+    template = 'posts/post_detail.html'
+    comments = post.comments.select_related('author').all()
+    context = {
+        'post': post,
+        'form': form,
+        'comments': comments
+    }
+    return render(request, template, context)
 
 
 @login_required
 def follow_index(request):
     template = 'posts/follow.html'
-    post_list = Post.objects.filter(author__following__user=request.user)
+    post_list = Post.objects.select_related('author', 'group').filter(
+        author__following__user=request.user
+    )
     page_obj = get_paginator(request, post_list)
-    context = {'page_obj': page_obj}
+    follow = True
+    context = {'page_obj': page_obj, 'follow': follow}
     return render(request, template, context)
 
 
+# Не проходит pytest без 151 строки, хотя сделал ограничение в БД.
+# Использовал CheckConstraint, все же должно работать без проверки тут?
+# Ошибка: CHECK constraint failed: check_follow
 @login_required
 def profile_follow(request, username):
-    if request.user != User.objects.get(username=username):
-        if not Follow.objects.filter(
+    author = get_object_or_404(User, username=username)
+    if request.user != author:
+        Follow.objects.get_or_create(
             user=request.user,
-            author=User.objects.get(username=username)
-        ):
-            Follow.objects.create(
-                user=request.user,
-                author=User.objects.get(username=username)
-            )
+            author=author
+        )
     return redirect('posts:profile', username)
 
 

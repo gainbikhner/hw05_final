@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Последние обновления избранных авторов{% endblock %}
 {% block content %}
-  {% include 'posts/includes/switcher.html' %}
+  {% include 'posts/includes/switcher.html' with follow=True %}
   <h1>Последние обновления избранных авторов</h1>
   {% for post in page_obj %}
       {% include 'posts/includes/post.html' with link_group=True %}

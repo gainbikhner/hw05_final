@@ -4,6 +4,7 @@ import tempfile
 from django import forms
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
@@ -240,9 +241,13 @@ class PostViewsTests(TestCase):
         response = self.author_client.get(reverse('posts:index'))
         content = response.content.decode()
         self.post.delete()
-        another_response = self.author_client.get(reverse('posts:index'))
-        another_content = another_response.content.decode()
-        self.assertEqual(content, another_content)
+        second_response = self.author_client.get(reverse('posts:index'))
+        second_content = second_response.content.decode()
+        self.assertEqual(content, second_content)
+        cache.clear()
+        third_response = self.author_client.get(reverse('posts:index'))
+        third_content = third_response.content.decode()
+        self.assertNotEqual(content, third_content)
 
     def test_profile_follow(self):
         """Авторизованный пользователь может подписываться

@@ -1,8 +1,12 @@
+from urllib.parse import urlencode
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
+from .decorators import author_only
 from .forms import CommentForm, PostForm
 from .models import Follow, Group, Post
 
@@ -21,8 +25,7 @@ def index(request):
     template = 'posts/index.html'
     post_list = Post.objects.select_related('author', 'group').all()
     page_obj = get_paginator(request, post_list)
-    index = True
-    context = {'page_obj': page_obj, 'index': index}
+    context = {'page_obj': page_obj}
     return render(request, template, context)
 
 
@@ -57,8 +60,11 @@ def profile(request, username):
 
 def post_detail(request, post_id):
     template = 'posts/post_detail.html'
-    post = get_object_or_404(Post, id=post_id)
-    form = CommentForm()
+    post = get_object_or_404(
+        Post.objects.select_related('author', 'group'),
+        id=post_id
+    )
+    form = CommentForm(request.GET)
     comments = post.comments.select_related('author').all()
     context = {
         'post': post,
@@ -79,15 +85,6 @@ def post_create(request):
     template = 'posts/create_post.html'
     context = {'form': form}
     return render(request, template, context)
-
-
-def author_only(func):
-    def wrapper(request, post_id, *args, **kwargs):
-        post = get_object_or_404(Post, id=post_id)
-        if request.user == post.author:
-            return func(request, post_id, *args, **kwargs)
-        return redirect('posts:post_detail', post_id)
-    return wrapper
 
 
 @login_required
@@ -121,14 +118,9 @@ def add_comment(request, post_id):
         comment.post = post
         comment.save()
         return redirect('posts:post_detail', post_id=post_id)
-    template = 'posts/post_detail.html'
-    comments = post.comments.select_related('author').all()
-    context = {
-        'post': post,
-        'form': form,
-        'comments': comments
-    }
-    return render(request, template, context)
+    redirect_url = reverse('posts:post_detail', kwargs={'post_id': post_id})
+    parameters = urlencode(form.data)
+    return redirect(f'{redirect_url}?{parameters}')
 
 
 @login_required
@@ -138,14 +130,10 @@ def follow_index(request):
         author__following__user=request.user
     )
     page_obj = get_paginator(request, post_list)
-    follow = True
-    context = {'page_obj': page_obj, 'follow': follow}
+    context = {'page_obj': page_obj}
     return render(request, template, context)
 
 
-# Не проходит pytest без 151 строки, хотя сделал ограничение в БД.
-# Использовал CheckConstraint, все же должно работать без проверки тут?
-# Ошибка: CHECK constraint failed: check_follow
 @login_required
 def profile_follow(request, username):
     author = get_object_or_404(User, username=username)
@@ -161,6 +149,6 @@ def profile_follow(request, username):
 def profile_unfollow(request, username):
     Follow.objects.get(
         user=request.user,
-        author=User.objects.get(username=username)
+        author=get_object_or_404(User, username=username)
     ).delete()
     return redirect('posts:profile', username)

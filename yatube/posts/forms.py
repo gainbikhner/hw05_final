@@ -15,11 +15,11 @@ class CommentForm(forms.ModelForm):
         fields = ('text',)
 
     def clean_text(self):
-        words = Word.objects.all()
+        words = Word.objects.values_list('word', flat=True)
         data = self.cleaned_data['text']
         for word in words:
-            if word.word in data.lower():
+            if word in data.lower():
                 raise forms.ValidationError(
-                    f'Вы использовали запретное слово «{word.word}»!'
+                    f'Вы использовали запретное слово «{word}»!'
                 )
         return data

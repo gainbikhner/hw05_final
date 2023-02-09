@@ -4,7 +4,7 @@ from django.shortcuts import render
 
 
 def permission_denied(request, exception):
-    return render(request, 'core/403csrf.html', status=HTTPStatus.FORBIDDEN)
+    return render(request, 'core/403.html', status=HTTPStatus.FORBIDDEN)
 
 
 def page_not_found(request, exception):
@@ -25,4 +25,4 @@ def server_error(request):
 
 
 def csrf_failure(request, reason=''):
-    return render(request, 'core/403csrf.html')
+    return render(request, 'core/csrf.html')
